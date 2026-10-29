@@ -5,6 +5,13 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const APP = 'Reverb';
 const KEY = k => `reverb.${k}`;
+// Running inside a claude.ai Artifact: no folder access, hash links, pop-ups or downloads there
+const EMBED = !!window.REVERB_EMBED;
+// Storage can be blocked (private windows, some embedded views), so never let it crash the app
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } },
+};
 
 // ---------- Icons ----------
 const F = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -43,12 +50,12 @@ const state = {
   files: new Map(), folderName: '', scanning: false, progress: '', needsReconnect: false, source: null,
   liked: new Set(), playlists: [],
   queue: [], original: [], qi: -1, shuffle: false, repeat: 'off',
-  listIds: [], sort: localStorage.getItem(KEY('sort')) || 'plays',
+  listIds: [], sort: store.get(KEY('sort')) || 'plays',
   rawTracks: [], edits: {}, moodFilter: 'all', matchedCount: 0,
 };
 
 // Browsers that can't keep access to a folder (iPad, Safari, Firefox) save imported songs inside Reverb instead
-const STORE = !Library.canPickFolder;
+const STORE = !Library.canPickFolder || EMBED;
 
 const MOODS = {
   upbeat: { name: 'Upbeat', color: '#F59B23' },
@@ -146,7 +153,7 @@ function buildLibrary(tracks) {
 // Likes and playlists are saved in this browser
 function loadData() {
   try {
-    const d = JSON.parse(localStorage.getItem(KEY('data')) || '{}');
+    const d = JSON.parse(store.get(KEY('data')) || '{}');
     state.liked = new Set(Array.isArray(d.liked) ? d.liked : []);
     state.playlists = Array.isArray(d.playlists) ? d.playlists : [];
     state.edits = d.edits && typeof d.edits === 'object' ? d.edits : {};
@@ -154,15 +161,32 @@ function loadData() {
 }
 
 function saveData() {
-  try {
-    localStorage.setItem(KEY('data'), JSON.stringify({ liked: [...state.liked], playlists: state.playlists, edits: state.edits }));
-  } catch {
+  if (!store.set(KEY('data'), JSON.stringify({ liked: [...state.liked], playlists: state.playlists, edits: state.edits }))) {
     toast("Couldn't save your likes and playlists in this browser.");
   }
 }
 
 // Download / restore likes + playlists as a file
+function backupText() {
+  return JSON.stringify({ liked: [...state.liked], playlists: state.playlists, edits: state.edits });
+}
+function openBackup() {
+  const d = $('#backupDialog');
+  $('#backupText').value = backupText();
+  d.showModal();
+  $('#backupText').select();
+}
+function openRestore() {
+  $('#restoreText').value = '';
+  $('#restoreDialog').showModal();
+  $('#restoreText').focus();
+}
+async function restoreFromText(text) {
+  await importData({ text: async () => text });
+}
+
 function exportData() {
+  if (EMBED) return openBackup();
   const blob = new Blob([JSON.stringify({ liked: [...state.liked], playlists: state.playlists, edits: state.edits }, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -189,8 +213,25 @@ function updateStatus() {
 }
 
 // ---------- Routing / rendering ----------
+let memRoute = '#/songs';
+const currentRoute = () => (EMBED ? memRoute : location.hash);
+function go(href) {
+  if (!EMBED) { location.hash = href; return; }
+  memRoute = href;
+  $('#search').value = ''; closeMenu(); render();
+}
+if (EMBED) {
+  // Inside the Artifact, links like #/album/... can't change the address, so handle them here
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href^="#/"]');
+    if (!a || e.defaultPrevented) return;
+    e.preventDefault();
+    go(a.getAttribute('href'));
+  });
+}
+
 function parseRoute() {
-  const [, name = 'songs', arg = ''] = location.hash.slice(1).split('/');
+  const [, name = 'songs', arg = ''] = currentRoute().slice(1).split('/');
   let decoded = '';
   try { decoded = decodeURIComponent(arg); } catch { decoded = arg; }
   return { name, arg: decoded };
@@ -223,7 +264,7 @@ function markNav() {
   const r = parseRoute();
   const searching = !!$('#search').value.trim();
   $$('.nav a').forEach(a => a.classList.toggle('active', !searching && a.dataset.nav === r.name));
-  const here = location.hash;
+  const here = currentRoute();
   $$('.pl-list a').forEach(a => a.classList.toggle('active', !searching && a.getAttribute('href') === here));
 }
 
@@ -686,6 +727,18 @@ function updateLikeButtons() {
   b.setAttribute('aria-label', `${on ? 'Remove from' : 'Save to'} Liked songs`);
 }
 
+function askConfirm(message, okLabel = 'Remove') {
+  return new Promise(resolve => {
+    const d = $('#confirmDialog');
+    $('#confirmText').textContent = message;
+    $('#confirmOk').textContent = okLabel;
+    d.returnValue = '';
+    d.onclose = () => resolve(d.returnValue === 'ok');
+    d.showModal();
+    $('#confirmCancel').focus();
+  });
+}
+
 function askName(title, initial = '') {
   return new Promise(resolve => {
     const d = $('#nameDialog');
@@ -707,7 +760,7 @@ async function createPlaylist(ids = []) {
   saveData();
   renderSidebar();
   if (ids.length) toast(`Added to "${name}"`);
-  else location.hash = `#/playlist/${p.id}`;
+  else go(`#/playlist/${p.id}`);
 }
 
 function addToPlaylist(pid, ids) {
@@ -742,13 +795,13 @@ async function renamePlaylist(pid) {
   render(true);
 }
 
-function deletePlaylist(pid) {
+async function deletePlaylist(pid) {
   const p = state.playlists.find(x => x.id === pid);
-  if (!p || !confirm(`Delete "${p.name}"? Your songs stay in your library.`)) return;
+  if (!p || !(await askConfirm(`Delete "${p.name}"? Your songs stay in your library.`, 'Delete playlist'))) return;
   state.playlists = state.playlists.filter(x => x.id !== pid);
   saveData();
   renderSidebar();
-  location.hash = '#/songs';
+  go('#/songs');
   toast(`Deleted "${p.name}"`);
 }
 
@@ -787,8 +840,8 @@ function trackMenu(id, x, y) {
     ...(inPlaylist ? [{ text: 'Remove from this playlist', icon: 'trash', run: () => removeFromPlaylist(inPlaylist, id) }] : []),
     { text: state.liked.has(id) ? 'Remove from Liked songs' : 'Save to Liked songs', icon: 'heart', run: () => toggleLike(id) },
     '-',
-    { text: 'Go to album', icon: 'albums', run: () => { $('#search').value = ''; location.hash = albumHref(t); } },
-    { text: 'Go to artist', icon: 'artists', run: () => { $('#search').value = ''; location.hash = artistHref(t.artist); } },
+    { text: 'Go to album', icon: 'albums', run: () => { $('#search').value = ''; go(albumHref(t)); } },
+    { text: 'Go to artist', icon: 'artists', run: () => { $('#search').value = ''; go(artistHref(t.artist)); } },
     '-',
     { text: 'Edit song info', icon: 'edit', run: () => editSong(id) },
     ...(STORE ? [{ text: 'Remove from Reverb', icon: 'trash', run: () => removeSong(id) }] : []),
@@ -839,7 +892,7 @@ function toggleQueue(show = $('#queuePanel').hidden) {
 // ---------- Session (remembers where you left off) ----------
 function saveSession() {
   try {
-    localStorage.setItem(KEY('session'), JSON.stringify({
+    store.set(KEY('session'), JSON.stringify({
       queue: state.queue, original: state.original, qi: state.qi,
       time: audio.currentTime || 0, shuffle: state.shuffle, repeat: state.repeat,
     }));
@@ -848,7 +901,7 @@ function saveSession() {
 
 function restoreSession() {
   let s;
-  try { s = JSON.parse(localStorage.getItem(KEY('session'))); } catch { return; }
+  try { s = JSON.parse(store.get(KEY('session'))); } catch { return; }
   if (!s) return;
   state.repeat = ['off', 'all', 'one'].includes(s.repeat) ? s.repeat : 'off';
   updateRepeatBtn();
@@ -866,7 +919,7 @@ function setVolume(v, remember = true) {
   audio.volume = v;
   $('#volume').value = v;
   setPct($('#volume'));
-  if (remember) localStorage.setItem(KEY('volume'), v);
+  if (remember) store.set(KEY('volume'), v);
   updateMuteIcon();
 }
 function updateMuteIcon() {
@@ -934,7 +987,7 @@ view.addEventListener('contextmenu', e => {
 view.addEventListener('change', e => {
   if (e.target.id === 'sortSelect') {
     state.sort = e.target.value;
-    localStorage.setItem(KEY('sort'), state.sort);
+    store.set(KEY('sort'), state.sort);
     render(true);
   }
 });
@@ -982,8 +1035,24 @@ if (STORE) {
   $('#topImport').hidden = false;
 }
 $('#exportData').addEventListener('click', exportData);
-$('#importData').addEventListener('click', () => $('#importInput').click());
-$('#importInput').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importData(f); });
+$('#importData').addEventListener('click', () => (EMBED ? openRestore() : $('#importInput').click()));
+$('#backupCopy').addEventListener('click', async () => {
+  const text = $('#backupText').value;
+  try { await navigator.clipboard.writeText(text); toast('Copied. Paste it into Restore on your other device.'); }
+  catch { $('#backupText').select(); toast('Press Copy on your keyboard menu to copy the selected text.'); }
+});
+$('#backupClose').addEventListener('click', () => $('#backupDialog').close());
+$('#restoreCancel').addEventListener('click', () => $('#restoreDialog').close());
+$('#restoreFile').addEventListener('click', () => $('#importInput').click());
+$('#restoreForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const text = $('#restoreText').value.trim();
+  if (!text) return toast('Paste your backup text first.');
+  $('#restoreDialog').close();
+  restoreFromText(text);
+});
+$('#confirmCancel').addEventListener('click', () => $('#confirmDialog').close('cancel'));
+$('#importInput').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) { $('#restoreDialog').open && $('#restoreDialog').close(); importData(f); } });
 $('#folderInput').addEventListener('change', e => {
   const files = [...e.target.files];
   e.target.value = '';
@@ -1219,7 +1288,7 @@ async function importSongs(files) {
 async function removeSong(id) {
   const t = state.byId.get(id);
   const raw = state.rawTracks.find(x => x.id === id);
-  if (!t || !raw || !confirm(`Remove "${t.title}" from Reverb? The file in your Files app isn't touched.`)) return;
+  if (!t || !raw || !(await askConfirm(`Remove "${t.title}" from Reverb? The original file on your device isn't touched.`))) return;
   if (currentId() === id) { audio.pause(); }
   await Library.storeRemove(raw.path).catch(() => {});
   await rescan();
@@ -1228,7 +1297,7 @@ async function removeSong(id) {
 
 async function removeAllSongs() {
   if (!state.tracks.length) return toast('There are no songs to remove.');
-  if (!confirm(`Remove all ${state.tracks.length} songs from Reverb? Your likes and playlists are kept, and the files in your Files app aren't touched.`)) return;
+  if (!(await askConfirm(`Remove all ${state.tracks.length} songs from Reverb? Your likes and playlists are kept, and the original files on your device aren't touched.`, 'Remove all'))) return;
   audio.pause();
   await Library.storeClear().catch(() => {});
   await rescan();
@@ -1237,7 +1306,7 @@ async function removeAllSongs() {
 
 // ---------- Start ----------
 (async function init() {
-  setVolume(parseFloat(localStorage.getItem(KEY('volume')) ?? '0.8'), false);
+  setVolume(parseFloat(store.get(KEY('volume')) ?? '0.8'), false);
   loadData();
   renderSidebar();
   if (STORE) return rescan();
@@ -1254,6 +1323,6 @@ async function removeAllSongs() {
 })();
 
 // Lets Reverb open with no internet once it's been installed from a website
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+if (!EMBED && 'serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }

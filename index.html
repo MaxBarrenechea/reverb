@@ -127,6 +127,41 @@
     </form>
   </dialog>
 
+  <dialog id="confirmDialog">
+    <form method="dialog">
+      <h2>Are you sure?</h2>
+      <p id="confirmText" class="dlg-text"></p>
+      <div class="dlg-actions">
+        <button type="button" class="ghost-btn" id="confirmCancel">Cancel</button>
+        <button value="ok" class="pill" id="confirmOk">Remove</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="backupDialog">
+    <h2>Back up likes and playlists</h2>
+    <p class="dlg-text">Copy this text and keep it somewhere safe, like a note. To move everything to another device, paste it into <b>Restore</b> there.</p>
+    <textarea id="backupText" class="code-box" rows="6" readonly></textarea>
+    <div class="dlg-actions">
+      <button type="button" class="ghost-btn" id="backupClose">Done</button>
+      <button type="button" class="pill" id="backupCopy">Copy</button>
+    </div>
+  </dialog>
+
+  <dialog id="restoreDialog">
+    <form id="restoreForm">
+      <h2>Restore likes and playlists</h2>
+      <p class="dlg-text">Paste the text from <b>Back up</b>, or choose a backup file. This replaces the likes and playlists on this device.</p>
+      <textarea id="restoreText" class="code-box" rows="6" placeholder="Paste your backup here" spellcheck="false"></textarea>
+      <div class="dlg-actions">
+        <button type="button" class="ghost-btn" id="restoreFile">Choose file</button>
+        <span class="grow"></span>
+        <button type="button" class="ghost-btn" id="restoreCancel">Cancel</button>
+        <button class="pill">Restore</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <audio id="audio" preload="auto"></audio>
   <script src="spotify-data.js"></script>

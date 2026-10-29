@@ -472,3 +472,11 @@ dialog .chips.small .chip:has(input:checked) { background: var(--c); }
   .top-import span { display: none; }
   .top-import { padding: 8px; }
 }
+
+.dlg-text { color: var(--muted); margin: -6px 0 16px; line-height: 1.5; }
+.code-box {
+  width: 100%; resize: vertical; background: var(--bg); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+  font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere;
+}
+.code-box:focus { outline: none; border-color: var(--accent); }
