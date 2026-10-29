@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Reverb">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <title>Reverb</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='%23F0323F'/%3E%3Cg fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M7 9v6M10 6.5v11M13 8.5v7M16 10.5v3'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="paused">
+  <div class="app">
+    <aside class="sidebar">
+      <a class="brand" href="#/songs" data-icon="logo">Reverb</a>
+      <nav class="nav" aria-label="Library">
+        <a href="#/songs" data-nav="songs" data-icon="songs">Songs</a>
+        <a href="#/albums" data-nav="albums" data-icon="albums">Albums</a>
+        <a href="#/artists" data-nav="artists" data-icon="artists">Artists</a>
+        <a href="#/liked" data-nav="liked" data-icon="heart">Liked songs</a>
+      </nav>
+      <div class="pl-head">
+        <span>Your Library</span>
+        <button id="newPlaylist" class="icon-btn" data-icon="plus" title="New playlist" aria-label="New playlist"></button>
+      </div>
+      <div id="playlists" class="pl-list"></div>
+      <div class="side-foot">
+        <button id="rescan" class="rescan" data-icon="refresh"><span>Rescan music folder</span></button>
+        <button id="chooseFolder" class="rescan" data-icon="albums"><span>Change music folder</span></button>
+        <div class="backup">
+          <button id="exportData" title="Download your likes and playlists as a file">Back up</button>
+          <span aria-hidden="true">·</span>
+          <button id="importData" title="Restore likes and playlists from a backup file">Restore</button>
+        </div>
+      </div>
+      <input id="folderInput" type="file" webkitdirectory multiple hidden>
+      <input id="importSongs" type="file" multiple accept=".mp3,.m4a,.aac,.flac,.wav,.ogg,.opus,.webm,audio/*" hidden>
+      <input id="importInput" type="file" accept=".json,application/json" hidden>
+    </aside>
+
+    <main class="main">
+      <div class="tint" aria-hidden="true"></div>
+      <header class="topbar">
+        <label class="search" data-icon="search">
+          <input id="search" type="search" placeholder="Search songs, albums, artists" autocomplete="off" aria-label="Search">
+        </label>
+        <span id="status" class="status" aria-live="polite"></span>
+        <button id="topImport" class="ghost-btn top-import" data-icon="plus" hidden><span>Import songs</span></button>
+      </header>
+      <div id="view" class="view"></div>
+    </main>
+
+    <aside id="queuePanel" class="queue" hidden>
+      <div class="queue-head">
+        <h2>Queue</h2>
+        <button id="closeQueue" class="icon-btn" data-icon="close" aria-label="Close queue"></button>
+      </div>
+      <div id="queueList"></div>
+    </aside>
+
+    <footer class="player">
+      <div class="np">
+        <div id="npArt" class="np-art"></div>
+        <div class="np-text">
+          <a id="npTitle" class="np-title" href="#/songs"></a>
+          <a id="npArtist" class="np-artist" href="#/artists"></a>
+        </div>
+        <button id="npLike" class="icon-btn like" aria-label="Save to Liked songs" hidden></button>
+      </div>
+      <div class="controls">
+        <div class="buttons">
+          <button id="shuffleBtn" class="ctl" data-icon="shuffle" title="Shuffle (S)" aria-label="Shuffle" aria-pressed="false"></button>
+          <button id="prevBtn" class="ctl" data-icon="prev" title="Previous (Shift+←)" aria-label="Previous"></button>
+          <button id="playBtn" class="play" aria-label="Play"></button>
+          <button id="nextBtn" class="ctl" data-icon="next" title="Next (Shift+→)" aria-label="Next"></button>
+          <button id="repeatBtn" class="ctl" data-icon="repeat" title="Repeat (R)" aria-label="Repeat: off"></button>
+        </div>
+        <div class="seek">
+          <span id="cur">0:00</span>
+          <input id="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
+          <span id="dur">0:00</span>
+        </div>
+      </div>
+      <div class="extras">
+        <button id="queueBtn" class="ctl" data-icon="queue" title="Queue (Q)" aria-label="Show queue" aria-pressed="false"></button>
+        <button id="muteBtn" class="ctl" title="Mute (M)" aria-label="Mute"></button>
+        <input id="volume" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
+      </div>
+    </footer>
+  </div>
+
+  <div id="menu" class="menu" role="menu" hidden></div>
+
+  <dialog id="nameDialog">
+    <form method="dialog">
+      <h2 id="nameTitle">New playlist</h2>
+      <input id="nameInput" maxlength="80" required placeholder="Playlist name" autocomplete="off">
+      <div class="dlg-actions">
+        <button type="button" class="ghost-btn" id="nameCancel">Cancel</button>
+        <button value="ok" class="pill">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="editDialog">
+    <form method="dialog">
+      <h2>Edit song info</h2>
+      <p id="editFrom" class="edit-from"></p>
+      <label class="field">Title<input id="editTitle" maxlength="200" autocomplete="off"></label>
+      <label class="field">Artist<input id="editArtist" maxlength="200" autocomplete="off"></label>
+      <label class="field">Album<input id="editAlbum" maxlength="200" autocomplete="off"></label>
+      <div class="field">Moods<div id="editMoods" class="chips small"></div></div>
+      <div class="dlg-actions">
+        <button value="reset" class="ghost-btn" id="editReset" formnovalidate>Use automatic info</button>
+        <span class="grow"></span>
+        <button type="button" class="ghost-btn" id="editCancel">Cancel</button>
+        <button value="ok" class="pill">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <audio id="audio" preload="auto"></audio>
+  <script src="spotify-data.js"></script>
+  <script src="library.js"></script>
+  <script src="match.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+music/*
+!music/PUT-YOUR-MUSIC-HERE.txt
+downloaded.txt
+.DS_Store
